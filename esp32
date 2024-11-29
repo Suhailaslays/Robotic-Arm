@@ -1,0 +1,152 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include <Firebase_ESP_Client.h>
+#include <ESP32Servo.h> // Use the ESP32Servo library
+
+// Provide the token generation process info
+#include "addons/TokenHelper.h"
+// Provide the RTDB payload printing info and other helper functions
+#include "addons/RTDBHelper.h"
+
+// Insert your network credentials
+#define WIFI_SSID "motog"
+#define WIFI_PASSWORD "12345678"
+
+// Insert Firebase project API Key
+#define API_KEY "AIzaSyCegn00tlmXVJhjGiHDZDCMNSAFcDjXNvw"
+
+// Insert RTDB URL
+#define DATABASE_URL "arm1-34234-default-rtdb.asia-southeast1.firebasedatabase.app"
+
+// Define Firebase Data object
+FirebaseData fbdo;
+
+FirebaseAuth auth;
+FirebaseConfig config;
+
+bool signupOK = false;
+
+// Servo setup
+Servo servoR; // Servo for R value
+Servo servoU; // Servo for U value
+Servo servoV; // Servo for V value
+int servoRPin = 13;  // Pin for servoR
+int servoUPin = 12;  // Pin for servoU 
+int servoVPin = 14;  // Pin for servoV 
+int servoRAngle = 90; // Initial angle of servoR
+int servoUAngle = 90; // Initial angle of servoU
+int servoVAngle = 30; // Initial angle of servoV
+int prevRValue = 0;   // To track changes in R
+int prevUValue = 0;   // To track changes in U
+int prevVValue = 0;   // To track changes in V
+
+void setup() {
+  Serial.begin(115200);
+
+  // Attach servos and set to initial positions
+  servoR.attach(servoRPin);
+  servoU.attach(servoUPin);
+  servoV.attach(servoVPin);
+  servoR.write(servoRAngle);
+  servoU.write(servoUAngle);
+  servoV.write(servoVAngle);
+
+  // Connect to Wi-Fi
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(300);
+  }
+  Serial.println();
+  Serial.print("Connected with IP: ");
+  Serial.println(WiFi.localIP());
+  Serial.println();
+
+  // Configure Firebase
+  config.api_key = API_KEY;
+  config.database_url = DATABASE_URL;
+
+  if (Firebase.signUp(&config, &auth, "", "")) {
+    Serial.println("Firebase sign-up successful!");
+    signupOK = true;
+  } else {
+    Serial.printf("Sign-up error: %s\n", config.signer.signupError.message.c_str());
+  }
+
+  config.token_status_callback = tokenStatusCallback; // Monitor token generation
+  Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
+}
+
+void loop() {
+  if (Firebase.ready() && signupOK) {
+    // Reading hand_movement/R
+    if (Firebase.RTDB.getInt(&fbdo, "hand_movement/R")) {
+      Serial.print("R: ");
+      int currentRValue = fbdo.intData();
+      Serial.println(currentRValue);
+
+      if (prevRValue == 0) {
+        prevRValue = currentRValue;
+      }
+
+      int deltaR = currentRValue - prevRValue;
+      if (deltaR != 0) {
+        int angleChange = (deltaR / 5) * 20;
+        servoRAngle += angleChange;
+        servoRAngle = constrain(servoRAngle, 0, 180);
+        prevRValue = currentRValue;
+        servoR.write(servoRAngle);
+        Serial.print("Servo R Angle: ");
+        Serial.println(servoRAngle);
+      }
+    }
+
+    // Reading hand_movement/U
+    if (Firebase.RTDB.getInt(&fbdo, "hand_movement/U")) {
+      Serial.print("U: ");
+      int currentUValue = fbdo.intData();
+      Serial.println(currentUValue);
+
+      if (prevUValue == 0) {
+        prevUValue = currentUValue;
+      }
+
+      int deltaU = currentUValue - prevUValue;
+      if (deltaU != 0) {
+        int angleChange = (deltaU / 5) * 20;
+        servoUAngle -= angleChange;
+        servoUAngle = constrain(servoUAngle, 0, 180);
+        prevUValue = currentUValue;
+        servoU.write(servoUAngle);
+        Serial.print("Servo U Angle: ");
+        Serial.println(servoUAngle);
+      }
+    }
+
+    // Reading hand_movement/V
+    if (Firebase.RTDB.getInt(&fbdo, "hand_movement/V")) {
+      Serial.print("V: ");
+      int currentVValue = fbdo.intData();
+      Serial.println(currentVValue);
+
+      
+
+      int deltaV = currentVValue;
+      
+       
+        int angleChange = 130 - deltaV;
+        servoVAngle = angleChange;
+        servoVAngle = constrain(servoVAngle, 30, 120);
+        prevVValue = currentVValue;
+        servoV.write(servoVAngle);
+        Serial.print("Servo V Angle: ");
+        Serial.println(servoVAngle);
+      
+    }
+
+    
+    delay(50); 
+  }
+}
